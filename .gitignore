@@ -23,11 +23,6 @@ Thumbs.db
 .vscode/
 .idea/
 
-# ===== Data (do not commit raw data) =====
-data/raw/
-data/processed/
-data/external/
-
 # ===== Outputs =====
 outputs/
 figures/

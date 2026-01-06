@@ -24,7 +24,8 @@ Thumbs.db
 .idea/
 
 # ===== Data (do not commit data) =====
-data/processed/
+data/processed/*
+!data/processed/README.md
 
 # ===== Outputs =====
 outputs/

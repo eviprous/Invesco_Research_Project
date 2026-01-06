@@ -1,0 +1,14 @@
+numpy
+pandas
+scipy
+statsmodels
+scikit-learn
+matplotlib
+seaborn
+tqdm
+jupyter
+notebook
+ipykernel
+wrds
+yfinance
+wrds

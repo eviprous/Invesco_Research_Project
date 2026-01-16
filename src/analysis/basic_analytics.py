@@ -137,6 +137,86 @@ def rolling_factor_betas(
     return betas
 
 
+    
+# ------------------------------------------------------
+# App Functions
+# ------------------------------------------------------
+
+def compute_rolling_betas_and_alpha(
+    excess_returns_df,
+    portfolio_col,
+    window=36,
+    beta_MKT=False,
+    beta_SMB=True,
+    beta_HML=True,
+    beta_RMW=True,
+    beta_CMA=True,
+    beta_Momentum=False
+):
+    factor_flags = {
+        "Mkt_RF": beta_MKT,
+        "SMB": beta_SMB,
+        "HML": beta_HML,
+        "RMW": beta_RMW,
+        "CMA": beta_CMA,
+        "MOM": beta_Momentum
+    }
+
+    selected_factors = [factor for factor, include in factor_flags.items() if include]
+
+    results = {
+        "alpha": [],
+        "r_squared": [],
+        "alpha_tstat": [],
+        "alpha_pval": [],
+        "sortino": []
+    }
+
+    for factor in selected_factors:
+        results[f"beta_{factor}"] = []
+
+    index = []
+
+    for i in range(window, len(excess_returns_df)):
+        window_df = excess_returns_df.iloc[i - window:i]
+
+        y = window_df[portfolio_col]
+        X = window_df[selected_factors]
+        X = sm.add_constant(X)
+
+        model = sm.OLS(y, X).fit()
+
+        results["alpha"].append(model.params.get("const", float("nan")))
+        results["r_squared"].append(model.rsquared)
+        results["alpha_tstat"].append(model.tvalues.get("const", float("nan")))
+        results["alpha_pval"].append(model.pvalues.get("const", float("nan")))
+
+        downside_std = y[y < 0].std()
+        sortino = y.mean() / downside_std if downside_std != 0 else float("nan")
+        results["sortino"].append(sortino)
+
+        for factor in selected_factors:
+            results[f"beta_{factor}"].append(model.params.get(factor, float("nan")))
+
+        index.append(excess_returns_df.index[i])
+
+    return pd.DataFrame(results, index=index)
+
+
+def compute_rolling_metrics(returns, window):
+    returns = returns.dropna()
+
+    # FIX: convert PeriodIndex → Timestamp for plotting
+    if isinstance(returns.index, pd.PeriodIndex):
+        returns = returns.copy()
+        returns.index = returns.index.to_timestamp()
+
+    cum_return = np.log1p(returns).cumsum()
+    rolling_vol = returns.rolling(window).std() * np.sqrt(12)
+    rolling_sharpe = returns.rolling(window).mean() / returns.rolling(window).std()
+
+    return cum_return, rolling_vol, rolling_sharpe
+
 
     
 # ------------------------------------------------------

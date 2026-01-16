@@ -1,56 +1,95 @@
 import pandas as pd
 import statsmodels.api as sm
+import numpy as np
+from scipy.optimize import minimize
 from src.preference_factors.build_preference_dataset import (
     build_preference_factor_dataset
 )
 
-def compute_rolling_betas_and_alphas(excess_ret_df, factors_df, ticker, window = 90, beta_mkt = True, beta_smb = False, beta_hml = False, beta_mom = False, beta_rmw = False, beta_cma = False):
-    '''Compute the rolling betas and alphas for each stock in excess_ret_df against the factors in factors_df.'''
-    factors = {"MKT-RF": beta_mkt, "SMB": beta_smb, "HML": beta_hml, "MOM": beta_mom, "RMW": beta_rmw, "CMA": beta_cma}
+def compute_rolling_market_betas_and_alphas(asset_ret_df, factors_df, window, beta_mkt = True):
+    '''Compute the rolling betas and alphas for each stock in asset_ret_df against the factors in factors_df.'''
+    factors = {"MKT-RF": beta_mkt}
     selected_factors = [factor for factor, include in factors.items() if include]
     results = {"alpha": []}
     for factor in selected_factors:
         results[f"beta_{factor}"] = []
     index = []
-    for i in range(window, len(excess_ret_df)):
-        ret_window = excess_ret_df[ticker].iloc[i - window:i]
-        factor_window = factors_df[selected_factors].iloc[i - window:i]
-        X = sm.add_constant(factor_window)
-        Y = ret_window
-        model = sm.OLS(Y, X).fit()
-        results["alpha"].append(model.params["const"])
-        for factor in selected_factors:
-            results[f"beta_{factor}"].append(model.params[factor])
-            index.append(excess_ret_df.index[i])
-            results_df = pd.DataFrame(results, index=index)
+    for ticker in asset_ret_df.columns:
+        for i in range(window, len(asset_ret_df)):
+            ret_window = asset_ret_df[ticker].iloc[i - window:i]
+            factor_window = factors_df[selected_factors].iloc[i - window:i]
+            X = sm.add_constant(factor_window)
+            Y = ret_window
+            model = sm.OLS(Y, X).fit()
+            results["alpha"].append(model.params["const"])
+            for factor in selected_factors:
+                results[f"beta_{factor}"].append(model.params[factor])
+                index.append(asset_ret_df.index[i])
+    results_df = pd.DataFrame(results, index=index)
     return results_df
 
-def equal_beta_contribution_weights():
+
+def equal_beta_contribution_weights(betas):
     '''Calculate the weights for the portfolio to have an equal beta contribution on all assets.'''
-    betas = compute_rolling_betas_and_alphas(....)
-    valid_betas = betas.dropna(axis=0, how="all")
-    valid_betas = valid_betas[valid_betas!= 0]
-    return #weights
+    full_weights = pd.DataFrame(index=betas.index, columns=betas.columns)
+    for row in betas.index:
+        beta_row = betas.loc[row]
+        valid_betas = beta_row.replace(0.0, np.nan).dropna()
+        if valid_betas.empty:
+            continue
+        
+        beta_vals = valid_betas.values
+        n = len(beta_vals)
+        idx = valid_betas.index
 
-def compute_EBC_returns():
+        def objective(w):
+            contribution = w * beta_vals
+            return np.sum((contribution - 1/n) ** 2)
+        
+        constraints = [{"type": "eq", "fun": lambda w: np.sum(w) - 1}]
+        bounds = [(0, 1) for _ in range(n)]
 
-    return
+        X0 = 1 / np.abs(beta_vals)
+        X0 = X0 / np.sum(X0)
 
-def build_EBC_dataset_monthly():
-    df_monthly = build_preference_factor_dataset(
-    returns_file="sp500_returns_monthly_with_tickers.csv",
-    #returns_file="sp500_returns_with_tickers_old.csv",
-    market_caps_file="sp500_market_caps_monthly.csv",
-    #market_caps_file="sp500_market_caps_old.csv",
-    ff_factors_file="ff_factors_monthly.csv",
-    frequency="monthly",
-    )
-    #also add EBC columns
-    EBC_returns = compute_EBC_returns
-    #merge with df monthly
+        result = minimize(objective, X0, bounds=bounds, constraints=constraints)
+        if not result.success:
+            continue
 
-    #create EBC - CW
+        weights = pd.Series(result.x, index=idx)
+
+        full_weights.loc[row, weights.index] = weights
+    full_weights = full_weights.fillna(0.0)
+    return full_weights
+
+def compute_EBC_betas(full_weights, betas):
+    '''Compute the EBC betas given the full weights and betas.'''
+    EBC_betas = pd.DataFrame(index=full_weights.index, columns=betas.columns)
+    for row in full_weights.index:
+        weight_row = full_weights.loc[row]
+        beta_row = betas.loc[row]
+        EBC_beta_row = weight_row * beta_row
+        EBC_betas.loc[row] = EBC_beta_row
+    return EBC_betas
+
+def compute_EBC_returns(asset_returns, full_weights):
+    '''Compute the EBC returns given the asset returns and full weights.'''
+    EBC_returns = pd.Series(index=full_weights.index)
+    for row in full_weights.index:
+        weight_row = full_weights.loc[row]
+        asset_return_row = asset_returns.loc[row]
+        EBC_returns.loc[row] = (weight_row * asset_return_row).sum()
+    return EBC_returns
+
+def build_EBC_dataset_monthly(monthly_asset_returns, monthly_factors, window):
+    betas = compute_rolling_market_betas_and_alphas(monthly_asset_returns, monthly_factors, window)
+    full_weights = equal_beta_contribution_weights(betas)
+    EBC_returns = compute_EBC_returns(monthly_asset_returns, full_weights)
+    return EBC_returns
 
 
-def build_EBC_dataset_daily():
-    returns
+def build_EBC_dataset_daily(daily_asset_returns, daily_factors, window):
+    betas = compute_rolling_market_betas_and_alphas(daily_asset_returns, daily_factors, window)
+    full_weights = equal_beta_contribution_weights(betas)
+    EBC_returns = compute_EBC_returns(daily_asset_returns, full_weights)
+    return EBC_returns

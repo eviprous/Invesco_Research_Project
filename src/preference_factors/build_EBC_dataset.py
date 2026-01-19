@@ -2,13 +2,10 @@ import pandas as pd
 import statsmodels.api as sm
 import numpy as np
 from scipy.optimize import minimize
-from src.preference_factors.build_preference_dataset import (
-    build_preference_factor_dataset
-)
 
 def compute_rolling_market_betas_and_alphas(asset_ret_df, factors_df, window, beta_mkt = True):
     '''Compute the rolling betas and alphas for each stock in asset_ret_df against the factors in factors_df.'''
-    factors = {"MKT-RF": beta_mkt}
+    factors = {'MKT_RF': beta_mkt}
     selected_factors = [factor for factor, include in factors.items() if include]
     results = {"alpha": []}
     for factor in selected_factors:
@@ -85,6 +82,9 @@ def build_EBC_dataset_monthly(monthly_asset_returns, monthly_factors, window):
     betas = compute_rolling_market_betas_and_alphas(monthly_asset_returns, monthly_factors, window)
     full_weights = equal_beta_contribution_weights(betas)
     EBC_returns = compute_EBC_returns(monthly_asset_returns, full_weights)
+    print("Sanity check: EBC betas")
+    EBC_betas = compute_EBC_betas(full_weights, betas)
+    print(EBC_betas.head())
     return EBC_returns
 
 
@@ -92,4 +92,7 @@ def build_EBC_dataset_daily(daily_asset_returns, daily_factors, window):
     betas = compute_rolling_market_betas_and_alphas(daily_asset_returns, daily_factors, window)
     full_weights = equal_beta_contribution_weights(betas)
     EBC_returns = compute_EBC_returns(daily_asset_returns, full_weights)
+    print("Sanity check: EBC betas")
+    EBC_betas = compute_EBC_betas(full_weights, betas)
+    print(EBC_betas.head())
     return EBC_returns

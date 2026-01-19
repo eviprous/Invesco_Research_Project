@@ -3,6 +3,11 @@ import statsmodels.api as sm
 import numpy as np
 from scipy.optimize import minimize
 
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DATA_PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
+
 def compute_rolling_market_betas_and_alphas(asset_ret_df, factors_df, window, beta_mkt = True):
     '''Compute the rolling betas and alphas for each stock in asset_ret_df against the factors in factors_df.'''
     factors = {'MKT_RF': beta_mkt}
@@ -10,6 +15,7 @@ def compute_rolling_market_betas_and_alphas(asset_ret_df, factors_df, window, be
     results = {"alpha": []}
     for factor in selected_factors:
         results[f"beta_{factor}"] = []
+
     index = []
     for ticker in asset_ret_df.columns:
         for i in range(window, len(asset_ret_df)):
@@ -78,6 +84,7 @@ def compute_EBC_returns(asset_returns, full_weights):
         EBC_returns.loc[row] = (weight_row * asset_return_row).sum()
     return EBC_returns
 
+
 def build_EBC_dataset_monthly(monthly_asset_returns, monthly_factors, window):
     betas = compute_rolling_market_betas_and_alphas(monthly_asset_returns, monthly_factors, window)
     full_weights = equal_beta_contribution_weights(betas)
@@ -96,3 +103,45 @@ def build_EBC_dataset_daily(daily_asset_returns, daily_factors, window):
     EBC_betas = compute_EBC_betas(full_weights, betas)
     print(EBC_betas.head())
     return EBC_returns
+
+
+def build_EBC_dataset(
+    returns_file: str,
+    ff_factors_file: str,
+    window,
+    frequency: str = 'monthly',
+) -> pd.DataFrame:
+    
+    if frequency not in {"daily", "monthly"}:
+        raise ValueError("frequency must be 'daily' or 'monthly'")
+    
+    # ------------------
+    # Load data
+    # ------------------
+    returns = pd.read_csv(
+    DATA_PROCESSED_DIR / returns_file,
+    index_col=0,
+    parse_dates=True
+    )
+
+
+    ff_factors = pd.read_csv(
+        DATA_PROCESSED_DIR / ff_factors_file,
+        index_col=0,
+        parse_dates=True
+    )
+
+    # Ensure numeric
+    rets = returns.apply(pd.to_numeric, errors="coerce")
+
+    if frequency == "monthly":
+        rets.index = rets.index.to_period("M")
+        ff_factors.index = ff_factors.index.to_period("M")
+
+    # Align returns and factors on common dates
+    rets, ff_factors = rets.align(ff_factors, join="inner", axis=0)
+
+    if frequency == "monthly":
+        return build_EBC_dataset_monthly(rets,ff_factors,window)
+    else:
+        return build_EBC_dataset_daily(rets, ff_factors,window)

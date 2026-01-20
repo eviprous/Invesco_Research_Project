@@ -100,6 +100,7 @@ def build_EBC_dataset_monthly(monthly_asset_returns, monthly_factors, window= 36
     full_weights = equal_beta_contribution_weights(betas)
     EBC_returns = compute_EBC_returns(monthly_asset_returns, full_weights)
     EBC_betas = compute_EBC_betas(full_weights, betas)
+    EBC_returns = EBC_returns.to_frame(name="EBC_returns_monthly")
     return EBC_returns, full_weights, EBC_betas
 
 
@@ -108,6 +109,7 @@ def build_EBC_dataset_daily(daily_asset_returns, daily_factors, window= 252):
     full_weights = equal_beta_contribution_weights(betas)
     EBC_returns = compute_EBC_returns(daily_asset_returns, full_weights)
     EBC_betas = compute_EBC_betas(full_weights, betas)
+    EBC_returns = EBC_returns.to_frame(name="EBC_returns_daily")
     return EBC_returns, full_weights, EBC_betas
 
 

@@ -16,7 +16,12 @@ def compute_rolling_market_betas_and_alphas(asset_ret_df, factors_df, window, be
     for factor in selected_factors:
         results[f"beta_{factor}"] = []
 
-    index = []
+    dates = asset_ret_df.index[window:]
+    tickers = asset_ret_df.columns
+
+    alphas_df = pd.DataFrame(index=dates, columns=tickers, dtype=float)
+    betas_df = pd.DataFrame(index=dates, columns=tickers, dtype=float)
+
     for ticker in asset_ret_df.columns:
         for i in range(window, len(asset_ret_df)):
             ret_window = asset_ret_df[ticker].iloc[i - window:i]
@@ -25,23 +30,27 @@ def compute_rolling_market_betas_and_alphas(asset_ret_df, factors_df, window, be
             Y = ret_window
             model = sm.OLS(Y, X).fit()
             results["alpha"].append(model.params["const"])
-            for factor in selected_factors:
-                results[f"beta_{factor}"].append(model.params[factor])
-                index.append(asset_ret_df.index[i])
-    results_df = pd.DataFrame(results, index=index)
-    return results_df
+            date = asset_ret_df.index[i]
+            
+            alphas_df.loc[date, ticker] = model.params['const']
+            betas_df.loc[date, ticker] = model.params[selected_factors[0]]
+
+    return alphas_df, betas_df
 
 
 def equal_beta_contribution_weights(betas):
     '''Calculate the weights for the portfolio to have an equal beta contribution on all assets.'''
     full_weights = pd.DataFrame(index=betas.index, columns=betas.columns)
     for row in betas.index:
+        
         beta_row = betas.loc[row]
+        print(beta_row)
         valid_betas = beta_row.replace(0.0, np.nan).dropna()
         if valid_betas.empty:
             continue
-        
+
         beta_vals = valid_betas.values
+        print(beta_vals)
         n = len(beta_vals)
         idx = valid_betas.index
 
@@ -54,6 +63,7 @@ def equal_beta_contribution_weights(betas):
 
         X0 = 1 / np.abs(beta_vals)
         X0 = X0 / np.sum(X0)
+        print(X0)
 
         result = minimize(objective, X0, bounds=bounds, constraints=constraints)
         if not result.success:
@@ -85,8 +95,8 @@ def compute_EBC_returns(asset_returns, full_weights):
     return EBC_returns
 
 
-def build_EBC_dataset_monthly(monthly_asset_returns, monthly_factors, window):
-    betas = compute_rolling_market_betas_and_alphas(monthly_asset_returns, monthly_factors, window)
+def build_EBC_dataset_monthly(monthly_asset_returns, monthly_factors, window= 36):
+    alphas, betas = compute_rolling_market_betas_and_alphas(monthly_asset_returns, monthly_factors, window)
     full_weights = equal_beta_contribution_weights(betas)
     EBC_returns = compute_EBC_returns(monthly_asset_returns, full_weights)
     print("Sanity check: EBC betas")
@@ -95,8 +105,8 @@ def build_EBC_dataset_monthly(monthly_asset_returns, monthly_factors, window):
     return EBC_returns
 
 
-def build_EBC_dataset_daily(daily_asset_returns, daily_factors, window):
-    betas = compute_rolling_market_betas_and_alphas(daily_asset_returns, daily_factors, window)
+def build_EBC_dataset_daily(daily_asset_returns, daily_factors, window= 252):
+    alphas, betas = compute_rolling_market_betas_and_alphas(daily_asset_returns, daily_factors, window)
     full_weights = equal_beta_contribution_weights(betas)
     EBC_returns = compute_EBC_returns(daily_asset_returns, full_weights)
     print("Sanity check: EBC betas")
@@ -108,7 +118,6 @@ def build_EBC_dataset_daily(daily_asset_returns, daily_factors, window):
 def build_EBC_dataset(
     returns_file: str,
     ff_factors_file: str,
-    window,
     frequency: str = 'monthly',
 ) -> pd.DataFrame:
     
@@ -142,6 +151,6 @@ def build_EBC_dataset(
     rets, ff_factors = rets.align(ff_factors, join="inner", axis=0)
 
     if frequency == "monthly":
-        return build_EBC_dataset_monthly(rets,ff_factors,window)
+        return build_EBC_dataset_monthly(rets,ff_factors)
     else:
-        return build_EBC_dataset_daily(rets, ff_factors,window)
+        return build_EBC_dataset_daily(rets, ff_factors)

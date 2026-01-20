@@ -99,27 +99,22 @@ def build_EBC_dataset_monthly(monthly_asset_returns, monthly_factors, window= 36
     alphas, betas = compute_rolling_market_betas_and_alphas(monthly_asset_returns, monthly_factors, window)
     full_weights = equal_beta_contribution_weights(betas)
     EBC_returns = compute_EBC_returns(monthly_asset_returns, full_weights)
-    print("Sanity check: EBC betas")
     EBC_betas = compute_EBC_betas(full_weights, betas)
-    print(EBC_betas.head())
-    return EBC_returns
+    return EBC_returns, full_weights, EBC_betas
 
 
 def build_EBC_dataset_daily(daily_asset_returns, daily_factors, window= 252):
     alphas, betas = compute_rolling_market_betas_and_alphas(daily_asset_returns, daily_factors, window)
     full_weights = equal_beta_contribution_weights(betas)
     EBC_returns = compute_EBC_returns(daily_asset_returns, full_weights)
-    print("Sanity check: EBC betas")
     EBC_betas = compute_EBC_betas(full_weights, betas)
-    print(EBC_betas.head())
-    return EBC_returns
+    return EBC_returns, full_weights, EBC_betas
 
 
 def build_EBC_dataset(
     returns_file: str,
     ff_factors_file: str,
-    frequency: str = 'monthly',
-) -> pd.DataFrame:
+    frequency: str = 'monthly'):
     
     if frequency not in {"daily", "monthly"}:
         raise ValueError("frequency must be 'daily' or 'monthly'")

@@ -6,7 +6,7 @@ from pathlib import Path
 
 # define root so files are saved in the correct place
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DATA_PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
+DATA_RAW_DIR = PROJECT_ROOT / "data" / "raw"
 
 
 # URLs
@@ -101,15 +101,15 @@ def build_factors_dataset(frequency: str)-> pd.DataFrame:
     pd.DataFrame
     """
 
-    DATA_PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+    DATA_RAW_DIR.mkdir(parents=True, exist_ok=True)
 
     if frequency == "daily":
         ff = load_ff_factors_daily()
-        ff.to_csv(DATA_PROCESSED_DIR / "ff_factors_daily.csv")
+        ff.to_csv(DATA_RAW_DIR / "ff_factors_daily.csv")
 
     elif frequency == "monthly":
         ff = load_ff_factors_monthly()
-        ff.to_csv(DATA_PROCESSED_DIR / "ff_factors_monthly.csv")
+        ff.to_csv(DATA_RAW_DIR / "ff_factors_monthly.csv")
 
     else:
         raise ValueError("frequency must be 'daily' or 'monthly'")

@@ -92,7 +92,7 @@ def make_pivot(df: pd.DataFrame, value_col: str) -> pd.DataFrame:
 
 def load_sp500_data(
     start: str = "1960-01-01",
-    end: str = "2024-12-31",
+    end: str = "2025-12-31",
     frequency: str = "monthly"
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
@@ -126,6 +126,12 @@ def load_sp500_data(
     returns_panel = returns_panel.loc[common_dates].sort_index()
     market_caps_panel = market_caps_panel.loc[common_dates].sort_index()
 
+    if frequency == "monthly":
+        returns_panel.index = pd.to_datetime(returns_panel.index).to_period("M")
+        market_caps_panel.index = pd.to_datetime(market_caps_panel.index).to_period("M")
+
+
+
     return returns_panel, market_caps_panel
 
 # -------------------------------------------------
@@ -133,10 +139,10 @@ def load_sp500_data(
 # -------------------------------------------------
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DATA_PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
+DATA_RAW_DIR = PROJECT_ROOT / "data" / "raw"
 
 
-def build_crsp_dataset( start: str = "1970-01-01", end: str = "2024-12-31", frequency: str = "monthly") -> tuple[pd.DataFrame, pd.DataFrame]:
+def build_crsp_dataset( start: str = "1960-01-01", end: str = "2025-12-31", frequency: str = "monthly") -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Build and save CRSP S&P 500 datasets.
 
@@ -151,7 +157,7 @@ def build_crsp_dataset( start: str = "1970-01-01", end: str = "2024-12-31", freq
     returns_panel, market_caps_panel
     """
 
-    DATA_PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+    DATA_RAW_DIR.mkdir(parents=True, exist_ok=True)
 
     returns, market_caps = load_sp500_data(
         start=start,
@@ -159,7 +165,14 @@ def build_crsp_dataset( start: str = "1970-01-01", end: str = "2024-12-31", freq
         frequency=frequency
     )
 
-    returns.to_csv(DATA_PROCESSED_DIR / f"sp500_returns_{frequency}_with_tickers.csv")
-    market_caps.to_csv(DATA_PROCESSED_DIR / f"sp500_market_caps_{frequency}.csv")
+    # -----------------------------
+    # Diagnostic: CRSP availability
+    # -----------------------------
+    print(f"[CRSP] Returns last date: {returns.index.max()}")
+    print(f"[CRSP] Market caps last date: {market_caps.index.max()}")
+
+
+    returns.to_csv(DATA_RAW_DIR / f"sp500_returns_{frequency}_with_tickers.csv")
+    market_caps.to_csv(DATA_RAW_DIR / f"sp500_market_caps_{frequency}.csv")
 
     return returns, market_caps

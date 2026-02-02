@@ -25,30 +25,27 @@ def assign_quantiles(series, nq, highest_is_1=True):
 
 
 def build_double_sorted_portfolios(
-    dic,
-    dic2,
+    beta1_df,
+    beta2_df,
     sp500,
     n_q1=3,
     n_q2=3,
     min_assets_per_cell=3,
+    f1_name="EBC",
+    f2_name="Cap_EBC",
 ):
     """Main portfolio construction routine."""
 
-    f1_name = list(dic.keys())[0]
-    f2_name = list(dic2.keys())[0]
-
     dates = (
-        dic[f1_name].index
-        .intersection(dic2[f2_name].index)
-        .intersection(sp500.index)
+        beta1_df.index.intersection(beta2_df.index).intersection(sp500.index)
     )
 
     port_rows, members_rows, cell_rows = [], [], []
 
     for date in tqdm(sorted(dates), desc="forming portfolios"):
         try:
-            beta1 = dic[f1_name].loc[date]
-            beta2 = dic2[f2_name].loc[date]
+            beta1 = beta1_df.loc[date]
+            beta2 = beta2_df.loc[date]
         except KeyError:
             continue
 

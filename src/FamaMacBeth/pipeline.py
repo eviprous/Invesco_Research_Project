@@ -13,23 +13,35 @@ from src.FamaMacBeth.pricing import pricing_errors, build_grids
 import pandas as pd
 
 def run_full_factor_pipeline(
-    dic,
-    dic2,
+    beta1_df,
+    beta2_df,
     sp500,
     EBC,
     Cap_EBC,
     n_q1=3,
     n_q2=3,
     min_assets_per_cell=3,
+    f1_name="EBC",
+    f2_name="Cap_EBC",
 ):
     portrets, members, qmap, f1, f2 = build_double_sorted_portfolios(
-        dic, dic2, sp500, n_q1, n_q2, min_assets_per_cell
+        beta1_df,
+        beta2_df,
+        sp500,
+        n_q1,
+        n_q2,
+        min_assets_per_cell,
+        f1_name=f1_name,
+        f2_name=f2_name,
     )
 
     portrets_wide = portrets["ret_ew"].unstack([1, 2])
     portrets_wide.columns = [f"Q{a}_Q{b}" for a, b in portrets_wide.columns]
 
     factors = pd.concat([EBC, Cap_EBC], axis=1).dropna()
+    if factors.shape[1] != 2:
+        raise ValueError("Expected two single-column Series/DataFrames for factors.")
+    factors.columns = [f1_name, f2_name]
     factors = factors.loc[portrets_wide.index]
 
     ts_summary = run_time_series_regressions(portrets_wide, factors, f1, f2)

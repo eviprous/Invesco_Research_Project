@@ -13,8 +13,8 @@ def compute_rolling_betas(
     """
     Compute rolling factor betas for a panel of assets.
     """
-    if factor_returns.shape[1] != 1:
-        raise ValueError("factor_returns must contain exactly ONE column")
+    # if factor_returns.shape[1] != 1:
+    #     raise ValueError("factor_returns must contain exactly ONE column")
 
     # Align once
     combined = asset_returns.join(factor_returns, how="inner")

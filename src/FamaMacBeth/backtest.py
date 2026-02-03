@@ -29,6 +29,29 @@ def load_monthly_inputs(data_raw_dir):
 
     return sp_500, sp_caps, rf
 
+def load_daily_inputs(data_raw_dir):
+    data_raw_dir = Path(data_raw_dir)
+    sp_500 = pd.read_csv(
+        data_raw_dir / "sp500_returns_daily_with_tickers.csv",
+        index_col=0,
+        parse_dates=True,
+    )
+
+    sp_caps = pd.read_csv(
+        data_raw_dir / "sp500_market_caps_daily.csv",
+        index_col=0,
+        parse_dates=True,
+    )
+
+    rf = pd.read_csv(
+        data_raw_dir / "ff_factors_daily.csv",
+        index_col=0,
+        parse_dates=True,
+    )
+    rf = rf[["RF"]]
+
+    return sp_500, sp_caps, rf
+
 
 def backtest_quantile_portfolios(members_df, returns_df, caps_df, n_q1, n_q2, weight="cap"):
     members_df = members_df.copy()

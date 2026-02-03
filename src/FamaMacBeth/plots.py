@@ -45,7 +45,7 @@ def plot_mean_grid(mean_grid, annualize=True):
         title = "Mean Portfolio Returns"
 
     plt.figure(figsize=(6, 5))
-    im = plt.imshow(display_grid.values, cmap="viridis")
+    im = plt.imshow(display_grid.values, cmap="YlGnBu")
     plt.title(title)
     plt.xlabel("Q2 (within Q1)")
     plt.ylabel("Q1")
@@ -120,3 +120,6 @@ def plot_expected_return_grid(beta_table, fm_table, n_q1, n_q2):
     plt.ylabel("EBC quantile")
     plt.tight_layout()
     plt.show()
+
+
+

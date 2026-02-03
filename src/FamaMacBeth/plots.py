@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas as pd
 
 
 def plot_cum_log_returns(portfolio_returns, title=None):
@@ -80,36 +81,42 @@ def plot_alpha_grid(alpha_grid):
     plt.show()
 
 
-def plot_expected_return_grid(pricing_df, n_q1, n_q2, annualize=True):
-    expected = pricing_df["mean_return"] - pricing_df["alpha_fm"]
-    expected_grid = np.full((n_q1, n_q2), np.nan, dtype=float)
+def plot_expected_return_grid(beta_table, fm_table, n_q1, n_q2):
+    def split_label(label):
+        q1, q2 = label.replace("Q", "").split("_")
+        return int(q1), int(q2)
 
-    for p, val in expected.items():
-        q1, q2 = map(int, p.replace("Q", "").split("_"))
-        expected_grid[q1 - 1, q2 - 1] = val
+    betaEBC_grid = pd.DataFrame(
+        np.nan, index=range(1, n_q1 + 1), columns=range(1, n_q2 + 1)
+    )
+    betaCap_grid = betaEBC_grid.copy()
 
-    if annualize:
-        display_grid = expected_grid * 12 * 100
-        title = "Annualized Expected Returns (FM, %)"
-    else:
-        display_grid = expected_grid
-        title = "Expected Returns (FM)"
+    for p in beta_table.index:
+        q1, q2 = split_label(p)
+        betaEBC_grid.loc[q1, q2] = beta_table.loc[p, "betaEBC"]
+        betaCap_grid.loc[q1, q2] = beta_table.loc[p, "betaCap_EBC"]
 
-    plt.figure(figsize=(6, 5))
-    im = plt.imshow(display_grid, cmap="viridis")
-    plt.title(title)
-    plt.xlabel("Q2 (within Q1)")
-    plt.ylabel("Q1")
-    plt.xticks(range(n_q2), range(1, n_q2 + 1))
-    plt.yticks(range(n_q1), range(1, n_q1 + 1))
+    gamma0_bar = fm_table.loc["alpha", "lambda_mean"]
+    gamma1_bar = fm_table.loc["lambdaEBC", "lambda_mean"]
+    gamma2_bar = fm_table.loc["lambda_Cap_EBC", "lambda_mean"]
 
-    for i in range(n_q1):
-        for j in range(n_q2):
-            val = display_grid[i, j]
-            if np.isfinite(val):
-                label = f"{val:.2f}%" if annualize else f"{val:.4f}"
-                plt.text(j, i, label, ha="center", va="center", color="white")
+    fm_implied_grid = (
+        gamma0_bar + gamma1_bar * betaEBC_grid + gamma2_bar * betaCap_grid
+    )
+    fm_implied_grid_annual = (1 + fm_implied_grid.astype(float)) ** 12 - 1
 
-    plt.colorbar(im, fraction=0.046, pad=0.04)
+    import seaborn as sns
+
+    plt.figure(figsize=(8, 6))
+    sns.heatmap(
+        fm_implied_grid_annual,
+        cmap="YlGnBu",
+        annot=True,
+        fmt=".2%",
+        cbar_kws={"label": "Annualized FM-Implied Return"},
+    )
+    plt.title("Fama–MacBeth Implied Returns by (EBC, Preference) Quantiles")
+    plt.xlabel("Preference quantile")
+    plt.ylabel("EBC quantile")
     plt.tight_layout()
     plt.show()

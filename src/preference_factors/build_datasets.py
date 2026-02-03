@@ -1,3 +1,4 @@
+from calendar import month
 import pandas as pd
 import numpy as np
 from scipy.optimize import minimize
@@ -6,6 +7,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_RAW_DIR = PROJECT_ROOT / "data" / "raw"
+DATA_PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
 
 ######################################################################
 ################ Helper Functions for all datasets ###################
@@ -116,64 +118,11 @@ def build_EBC_dataset(
     else:
         return ebc.build_EBC_dataset_daily(returns, ff_factors)
 
-
-
-##############################################################
-################ Functions for Quantile dataset ###################
-##############################################################
-import src.preference_factors.build_quantile_portfollios as bq
-
-def build_quantile_portfolios(
-        returns_file: str,
-        factor_returns,
-        frequency,
-        rolling_window = 36,
-        min_obs = 10,
-        n_q1=3,
-        n_q2=3,
-        min_assets_per_cell = 10
-):
-    if frequency not in {"daily", "monthly"}:
-        raise ValueError("frequency must be 'daily' or 'monthly'")
-    
-    factor_names = list(factor_returns.columns)
-    if len(factor_names) != 2:
-        raise ValueError("Please make sure your factors_returns only include two columns")
-    
-    returns = build_returns_dataset(returns_file, frequency)
-    
-    betas_dict = bq.compute_rolling_betas(
-        returns,
-        factor_returns,
-        rolling_window,
-        min_obs
-    )
-
-    betas_1_name = factor_names[0]
-    betas_1 = betas_dict[betas_1_name]
-
-    betas_2_name = factor_names[1]
-    betas_2 = betas_dict[betas_2_name]
-
-    quantile_results = bq.build_two_way_quantile_portfolios(
-        returns,
-        betas_1,
-        betas_1_name,
-        betas_2,
-        betas_2_name,
-        n_q1,
-        n_q2,
-        min_assets_per_cell
-    )
-
-    return quantile_results
-
-
 #####################################################################
 ################ Functions for preference dataset ###################
 #####################################################################
 
-def build_preference_dataset(
+def build_all_dataset(
     returns_file: str,
     market_caps_file: str,
     ff_factors_file: str,
@@ -214,9 +163,10 @@ def build_preference_dataset(
     # ------------------
     # EBC portfolio -> only EBC returns
     # ------------------
-    ebc_returns,_,_ = build_EBC_dataset(returns_file, ff_factors_file, frequency)
+    df_EBC_returns, df_EBC_weights, df_EBC_beta_contributions = build_EBC_dataset(returns_file, ff_factors_file, frequency)
+
     # Ensure alignment
-    ret_ebc = ebc_returns.iloc[:, 0]
+    ret_ebc = df_EBC_returns.iloc[:, 0]
     ret_cw, ret_ebc = ret_cw.align(ret_ebc, join="inner")
     ret_ew = ret_ew.loc[ret_cw.index]
 
@@ -227,7 +177,7 @@ def build_preference_dataset(
     ret_cw_ew = ret_cw - ret_ew
     ret_cw_ebc = ret_cw - ret_ebc
 
-    portfolios = pd.DataFrame(
+    merged_df = pd.DataFrame(
         {
             "CW": ret_cw,
             "EW": ret_ew,
@@ -235,37 +185,32 @@ def build_preference_dataset(
             "CW-EW": ret_cw_ew,
             "CW-EBC": ret_cw_ebc
         }
-    )
-
-    return portfolios.dropna()
-
-
-
-def build_preference_factor_dataset(
-    returns_file: str,
-    market_caps_file: str,
-    ff_factors_file: str,
-    frequency: str = 'monthly',
-) -> pd.DataFrame:
-    """
-    Function that reads returns, market caps, and ff files and combines them to create preferences and factors in one dataset
-    used in all regressions
-    """
-
-    if frequency not in {"daily", "monthly"}:
-        raise ValueError("frequency must be 'daily' or 'monthly'")
-
-    # ------------------
-    # Load data
-    # ------------------
-
-    preference_df = build_preference_dataset(returns_file, market_caps_file,ff_factors_file,frequency)
+    ).dropna()
 
     ff_factors = build_ff_dataset(ff_factors_file,frequency)
 
     # ------------------
     # Merge with factors
     # ------------------
-    df = preference_df.join(ff_factors, how="inner")
+    full_merged_df = merged_df.join(ff_factors, how="inner").dropna()
 
-    return df.dropna()
+    if frequency == "monthly":
+        # save individual datasets
+        df_EBC_weights.to_csv(DATA_PROCESSED_DIR / "monthly_EBC_weights.csv")
+        df_EBC_beta_contributions.to_csv(DATA_PROCESSED_DIR / "monthly_EBC_beta_contributions.csv")
+        df_EBC_returns.to_csv(DATA_PROCESSED_DIR / "monthly_EBC_returns.csv")
+
+        # save merged dataset
+        merged_df.to_csv(DATA_PROCESSED_DIR / "monthly_preference_returns.csv")
+        full_merged_df.to_csv(DATA_PROCESSED_DIR / "monthly_preference_returns_and_factors.csv")
+
+    elif frequency == "daily":
+        df_EBC_weights.to_csv(DATA_PROCESSED_DIR / "daily_EBC_weights.csv")
+        df_EBC_beta_contributions.to_csv(DATA_PROCESSED_DIR / "daily_EBC_beta_contributions.csv")
+        df_EBC_returns.to_csv(DATA_PROCESSED_DIR / "daily_EBC_returns.csv")
+
+        # save merged dataset
+        merged_df.to_csv(DATA_PROCESSED_DIR / "daily_preference_returns.csv")
+        full_merged_df.to_csv(DATA_PROCESSED_DIR / "daily_preference_returns_and_factors.csv")
+
+    return merged_df, full_merged_df

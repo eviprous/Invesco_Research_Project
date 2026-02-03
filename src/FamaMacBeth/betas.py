@@ -35,27 +35,38 @@ def compute_rolling_betas(
         start_idx = end_idx - (rolling_window -1)
         window_dates = combined.index[start_idx : end_idx + 1]
 
-        X_win = factor_returns.loc[window_dates]
+        X_win = factor_returns.loc[window_dates].astype(float)
+        Y_win = asset_returns.loc[window_dates, tickers].astype(float)
 
-        for asset in tickers:
-            y_win = asset_returns.loc[window_dates, asset]
-            data = pd.concat([y_win, X_win], axis=1).dropna()
+        # drop rows with any NaNs in factor
+        valid_rows = ~X_win.isna().any(axis=1)
+        X_win = X_win.loc[valid_rows]
+        Y_win = Y_win.loc[valid_rows]
 
-            if len(data) < min_obs:
-                betas_df.loc[next_date, asset] = np.nan
-                continue
+        if len(X_win) < min_obs:
+            betas_df.loc[next_date, :] = np.nan
+            continue
 
-            Y = data[asset].astype(float)
-            X = sm.add_constant(data[[factor_name]].astype(float), has_constant="add")
+        # drop tickers with any NaNs in this window
+        valid_cols = ~Y_win.isna().any(axis=0)
+        Y_win = Y_win.loc[:, valid_cols]
+        if Y_win.shape[1] == 0:
+            betas_df.loc[next_date, :] = np.nan
+            continue
 
-            # Singular matrix guard
-            if X.shape[0] <= X.shape[1] or np.linalg.matrix_rank(X) < X.shape[1]:
-                betas_df.loc[next_date, asset] = np.nan
-                continue
+        X = sm.add_constant(X_win[[factor_name]], has_constant="add").values  # T x 2
+        Y = Y_win.values  # T x N
 
-            res = sm.OLS(Y, X).fit()
+        XtX = X.T @ X
+        if np.linalg.matrix_rank(XtX) < XtX.shape[0]:
+            betas_df.loc[next_date, Y_win.columns] = np.nan
+            continue
 
-            betas_df.loc[next_date, asset] = res.params.get(factor_name)
+        B = np.linalg.solve(XtX, X.T @ Y)  # 2 x N
+
+        # B[0] = alpha, B[1] = beta for factor_name
+        betas_df.loc[next_date, Y_win.columns] = B[1, :]
+
 
     return betas_df
 

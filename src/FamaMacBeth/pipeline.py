@@ -23,6 +23,7 @@ def run_full_factor_pipeline(
     min_assets_per_cell=3,
     f1_name="EBC",
     f2_name="Cap_EBC",
+    frequency="monthly",
 ):
     portrets, members, qmap, f1, f2 = build_double_sorted_portfolios(
         beta1_df,
@@ -37,6 +38,10 @@ def run_full_factor_pipeline(
 
     portrets_wide = portrets["ret_ew"].unstack([1, 2])
     portrets_wide.columns = [f"Q{a}_Q{b}" for a, b in portrets_wide.columns]
+
+    if frequency == "monthly":
+        portrets_wide.index = portrets_wide.index.to_period("M")
+    
 
     factors = pd.concat([EBC, Cap_EBC], axis=1).dropna()
     if factors.shape[1] != 2:

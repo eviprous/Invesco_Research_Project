@@ -35,6 +35,16 @@ def build_double_sorted_portfolios(
     f2_name="Cap_EBC",
 ):
     """Main portfolio construction routine."""
+    # Ensure consistent timestamp index (PeriodIndex can break downstream alignment)
+    if isinstance(beta1_df.index, pd.PeriodIndex):
+        beta1_df = beta1_df.copy()
+        beta1_df.index = beta1_df.index.to_timestamp()
+    if isinstance(beta2_df.index, pd.PeriodIndex):
+        beta2_df = beta2_df.copy()
+        beta2_df.index = beta2_df.index.to_timestamp()
+    if isinstance(sp500.index, pd.PeriodIndex):
+        sp500 = sp500.copy()
+        sp500.index = sp500.index.to_timestamp()
 
     dates = (
         beta1_df.index.intersection(beta2_df.index).intersection(sp500.index)

@@ -22,18 +22,39 @@ def compute_rolling_market_betas_and_alphas(asset_ret_df, factors_df, window, be
     alphas_df = pd.DataFrame(index=dates, columns=tickers, dtype=float)
     betas_df = pd.DataFrame(index=dates, columns=tickers, dtype=float)
 
-    for ticker in asset_ret_df.columns:
-        for i in range(window, len(asset_ret_df)):
-            ret_window = asset_ret_df[ticker].iloc[i - window:i]
-            factor_window = factors_df[selected_factors].iloc[i - window:i]
-            X = sm.add_constant(factor_window)
-            Y = ret_window
-            model = sm.OLS(Y, X).fit()
-            results["alpha"].append(model.params["const"])
-            date = asset_ret_df.index[i]
-            
-            alphas_df.loc[date, ticker] = model.params['const']
-            betas_df.loc[date, ticker] = model.params[selected_factors[0]]
+    for i in range(window, len(asset_ret_df)):
+        date = asset_ret_df.index[i]
+
+        Y_win = asset_ret_df.iloc[i - window:i].astype(float)                 # T x N
+        X_win = factors_df[selected_factors].iloc[i - window:i].astype(float) # T x K
+
+        # drop rows with any NaNs in factors
+        valid_rows = ~X_win.isna().any(axis=1)
+        X_win = X_win.loc[valid_rows]
+        Y_win = Y_win.loc[valid_rows]
+
+        if len(X_win) == 0:
+            continue
+
+        # drop tickers with any NaNs in this window
+        valid_cols = ~Y_win.isna().any(axis=0)
+        Y_win = Y_win.loc[:, valid_cols]
+        if Y_win.shape[1] == 0:
+            continue
+
+        X = sm.add_constant(X_win, has_constant="add").values   # T x (K+1)
+        Y = Y_win.values                                        # T x N
+
+        XtX = X.T @ X
+        if np.linalg.matrix_rank(XtX) < XtX.shape[0]:
+            continue
+
+        B = np.linalg.solve(XtX, X.T @ Y)  # (K+1) x N
+
+        # store alphas and betas
+        alphas_df.loc[date, Y_win.columns] = B[0, :]
+        betas_df.loc[date, Y_win.columns] = B[1, :]  # only MKT_RF
+
 
     return alphas_df, betas_df
 

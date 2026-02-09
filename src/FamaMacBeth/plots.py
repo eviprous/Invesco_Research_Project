@@ -35,10 +35,17 @@ def plot_cum_log_returns(portfolio_returns, title=None):
     plt.show()
 
 
-def plot_mean_grid(mean_grid, annualize=True):
+def plot_mean_grid(mean_grid, annualize=True, frequency = 'monthly'):
     n_q1, n_q2 = mean_grid.shape
     if annualize:
-        display_grid = mean_grid * 12 * 100
+        if frequency == "monthly":
+            ann_factor = 12
+        elif frequency == "daily":
+            ann_factor = 252
+        else:
+            raise ValueError("freq must be 'monthly' or 'daily'")
+
+        display_grid = mean_grid * ann_factor * 100
         title = "Annualized Mean Portfolio Returns (%)"
     else:
         display_grid = mean_grid
@@ -81,7 +88,7 @@ def plot_alpha_grid(alpha_grid):
     plt.show()
 
 
-def plot_expected_return_grid(beta_table, fm_table, n_q1, n_q2):
+def plot_expected_return_grid(beta_table, fm_table, n_q1, n_q2, frequency = 'monthly'):
     def split_label(label):
         q1, q2 = label.replace("Q", "").split("_")
         return int(q1), int(q2)
@@ -103,7 +110,17 @@ def plot_expected_return_grid(beta_table, fm_table, n_q1, n_q2):
     fm_implied_grid = (
         gamma0_bar + gamma1_bar * betaEBC_grid + gamma2_bar * betaCap_grid
     )
-    fm_implied_grid_annual = (1 + fm_implied_grid.astype(float)) ** 12 - 1
+
+    if frequency == "monthly":
+        ann_factor = 12
+    elif frequency == "daily":
+        ann_factor = 252
+    else:
+        raise ValueError("freq must be 'monthly' or 'daily'")
+
+    fm_implied_grid_annual = (1 + fm_implied_grid.astype(float)) ** ann_factor - 1
+
+    #fm_implied_grid_annual = (1 + fm_implied_grid.astype(float)) ** 12 - 1
 
     import seaborn as sns
 

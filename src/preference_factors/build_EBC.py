@@ -4,6 +4,33 @@ import numpy as np
 from scipy.optimize import minimize
 
 from pathlib import Path
+from tqdm.auto import tqdm
+from joblib import Parallel, delayed
+
+def _solve_ebc_for_row(row, betas_row):
+    valid_betas = betas_row.replace(0.0, np.nan).dropna()
+    if valid_betas.empty:
+        return row, None
+
+    beta_vals = valid_betas.values
+    n = len(beta_vals)
+    idx = valid_betas.index
+
+    def objective(w):
+        return np.sum((w * beta_vals - 1/n) ** 2)
+
+    constraints = [{"type": "eq", "fun": lambda w: np.sum(w) - 1}]
+    bounds = [(0, 1)] * n
+
+    X0 = 1 / np.abs(beta_vals)
+    X0 /= X0.sum()
+
+    result = minimize(objective, X0, bounds=bounds, constraints=constraints)
+    if not result.success:
+        return row, None
+
+    return row, pd.Series(result.x, index=idx)
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_RAW_DIR = PROJECT_ROOT / "data" / "raw"
@@ -22,7 +49,13 @@ def compute_rolling_market_betas_and_alphas(asset_ret_df, factors_df, window, be
     alphas_df = pd.DataFrame(index=dates, columns=tickers, dtype=float)
     betas_df = pd.DataFrame(index=dates, columns=tickers, dtype=float)
 
-    for i in range(window, len(asset_ret_df)):
+    #for i in range(window, len(asset_ret_df)):
+    for i in tqdm(
+        range(window, len(asset_ret_df)),
+        desc="Rolling OLS CAPM",
+        total=len(asset_ret_df) - window
+    ):
+
         date = asset_ret_df.index[i]
 
         Y_win = asset_ret_df.iloc[i - window:i].astype(float)                 # T x N
@@ -58,11 +91,32 @@ def compute_rolling_market_betas_and_alphas(asset_ret_df, factors_df, window, be
 
     return alphas_df, betas_df
 
+def equal_beta_contribution_weights_parallel(betas):
+    '''Calculate the weights for the portfolio to have an equal beta contribution on all assets.'''
+
+    # Run per-row optimizations in parallel
+    results = Parallel(n_jobs=-1)(
+        delayed(_solve_ebc_for_row)(row, betas.loc[row])
+        for row in tqdm(betas.index, desc="EBC optimization (parallel)")
+    )
+
+    # Assemble results
+    full_weights = pd.DataFrame(0.0, index=betas.index, columns=betas.columns)
+
+    for row, weights in results:
+        if weights is not None:
+            full_weights.loc[row, weights.index] = weights
+
+    return full_weights
+
+
 
 def equal_beta_contribution_weights(betas):
     '''Calculate the weights for the portfolio to have an equal beta contribution on all assets.'''
     full_weights = pd.DataFrame(index=betas.index, columns=betas.columns)
-    for row in betas.index:
+    #for row in betas.index:
+    for row in tqdm(betas.index, desc="EBC optimization"):
+
         
         beta_row = betas.loc[row]
         valid_betas = beta_row.replace(0.0, np.nan).dropna()
@@ -124,7 +178,9 @@ def build_EBC_dataset_monthly(monthly_asset_returns, monthly_factors, window= 36
 
 def build_EBC_dataset_daily(daily_asset_returns, daily_factors, window= 252):
     alphas, betas = compute_rolling_market_betas_and_alphas(daily_asset_returns, daily_factors, window)
-    full_weights = equal_beta_contribution_weights(betas)
+    
+    full_weights = equal_beta_contribution_weights_parallel(betas)
+    #full_weights = equal_beta_contribution_weights(betas)
     EBC_returns = compute_EBC_returns(daily_asset_returns, full_weights)
     EBC_betas = compute_EBC_betas(full_weights, betas)
     EBC_returns = EBC_returns.to_frame(name="EBC_returns_daily")

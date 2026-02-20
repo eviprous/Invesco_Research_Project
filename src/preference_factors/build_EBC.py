@@ -147,7 +147,7 @@ def equal_beta_contribution_weights(betas):
     full_weights = full_weights.fillna(0.0)
     return full_weights
 
-def compute_EBC_betas(full_weights, betas):
+def compute_EBC_betas_old(full_weights, betas):
     '''Compute the EBC betas given the full weights and betas.'''
     EBC_betas = pd.DataFrame(index=full_weights.index, columns=betas.columns)
     for row in full_weights.index:
@@ -157,7 +157,25 @@ def compute_EBC_betas(full_weights, betas):
         EBC_betas.loc[row] = EBC_beta_row
     return EBC_betas
 
-def compute_EBC_returns(asset_returns, full_weights):
+def compute_EBC_betas(full_weights, betas):
+    """
+    Compute EBC beta contributions using aligned weights and betas.
+    """
+
+    # Align safely
+    full_weights, betas = full_weights.align(
+        betas,
+        join="inner",
+        axis=0
+    )
+
+    # Vectorized multiplication
+    EBC_betas = full_weights * betas
+
+    return EBC_betas
+
+
+def compute_EBC_returns_old(asset_returns, full_weights):
     '''Compute the EBC returns given the asset returns and full weights.'''
     EBC_returns = pd.Series(index=full_weights.index)
     for row in full_weights.index:
@@ -166,14 +184,92 @@ def compute_EBC_returns(asset_returns, full_weights):
         EBC_returns.loc[row] = (weight_row * asset_return_row).sum()
     return EBC_returns
 
+def compute_EBC_returns(asset_returns, full_weights):
+    """
+    Compute EBC returns using aligned weights and asset returns.
+    """
+    # Align automatically (safe)
+    full_weights, asset_returns = full_weights.align(
+        asset_returns,
+        join="inner",
+        axis=0
+    )
 
-def build_EBC_dataset_monthly(monthly_asset_returns, monthly_factors, window= 36):
+    # Vectorized portfolio return
+    EBC_returns = (full_weights * asset_returns).sum(axis=1)
+
+    return EBC_returns
+
+
+
+def build_EBC_dataset_monthly_old(monthly_asset_returns, monthly_factors, window= 36):
     alphas, betas = compute_rolling_market_betas_and_alphas(monthly_asset_returns, monthly_factors, window)
-    full_weights = equal_beta_contribution_weights(betas)
-    EBC_returns = compute_EBC_returns(monthly_asset_returns, full_weights)
-    EBC_betas = compute_EBC_betas(full_weights, betas)
+    full_weights = equal_beta_contribution_weights_parallel(betas)
+
+    #Rebalance quarterly
+    weights_rebal = full_weights.resample("Q").last()
+
+    # Shift once to avoid look-ahead bias
+    weights_rebal = weights_rebal.shift(1)
+
+    # forward-fill to monthly
+    weights_monthly = weights_rebal.reindex(monthly_asset_returns.index, method="ffill")
+
+    weights_monthly, monthly_asset_returns = weights_monthly.align(
+    monthly_asset_returns,
+    join="inner",
+    axis=0
+    )
+
+    EBC_returns = compute_EBC_returns(monthly_asset_returns, weights_monthly)
+
+    #EBC_returns = compute_EBC_returns(monthly_asset_returns, full_weights)
+    EBC_betas = compute_EBC_betas(weights_monthly, betas)
     EBC_returns = EBC_returns.to_frame(name="EBC_returns_monthly")
-    return EBC_returns, full_weights, EBC_betas
+    return EBC_returns, weights_monthly, EBC_betas
+
+def build_EBC_dataset_monthly(monthly_asset_returns, monthly_factors, window=36):
+
+    # ---- Convert PeriodIndex → DatetimeIndex ONLY if needed ----
+    if isinstance(monthly_asset_returns.index, pd.PeriodIndex):
+        monthly_asset_returns = monthly_asset_returns.copy()
+        monthly_factors = monthly_factors.copy()
+
+        monthly_asset_returns.index = monthly_asset_returns.index.to_timestamp()
+        monthly_factors.index = monthly_factors.index.to_timestamp()
+
+    alphas, betas = compute_rolling_market_betas_and_alphas(
+        monthly_asset_returns, monthly_factors, window
+    )
+
+    full_weights = equal_beta_contribution_weights_parallel(betas)
+
+    if isinstance(full_weights.index, pd.PeriodIndex):
+        full_weights.index = full_weights.index.to_timestamp()
+
+    # ---- Quarterly Rebalancing ----
+    weights_rebal = full_weights.resample("Q").last()
+
+    # Shift once to avoid look-ahead bias
+    weights_rebal = weights_rebal.shift(1)
+
+    # Forward-fill to monthly
+    weights_monthly = weights_rebal.reindex(
+        monthly_asset_returns.index,
+        method="ffill"
+    )
+
+    EBC_returns = compute_EBC_returns(
+        monthly_asset_returns,
+        weights_monthly
+    )
+
+    EBC_betas = compute_EBC_betas(weights_monthly, betas)
+
+    EBC_returns = EBC_returns.to_frame(name="EBC_returns_monthly")
+
+    return EBC_returns, weights_monthly, EBC_betas
+
 
 
 def build_EBC_dataset_daily(daily_asset_returns, daily_factors, window= 252):
@@ -181,7 +277,24 @@ def build_EBC_dataset_daily(daily_asset_returns, daily_factors, window= 252):
     
     full_weights = equal_beta_contribution_weights_parallel(betas)
     #full_weights = equal_beta_contribution_weights(betas)
-    EBC_returns = compute_EBC_returns(daily_asset_returns, full_weights)
-    EBC_betas = compute_EBC_betas(full_weights, betas)
+
+    # Rebalance Monthly
+    weights_rebal = full_weights.resample("M").last()
+    weights_rebal = weights_rebal.shift(1)
+
+
+    # forward-fill to daily
+    weights_daily = weights_rebal.reindex(daily_asset_returns.index, method="ffill")
+
+    weights_daily, daily_asset_returns = weights_daily.align(
+    daily_asset_returns,
+    join="inner",
+    axis=0
+    )
+
+    EBC_returns = compute_EBC_returns(daily_asset_returns, weights_daily)
+
+    EBC_betas = compute_EBC_betas(weights_daily, betas)
+
     EBC_returns = EBC_returns.to_frame(name="EBC_returns_daily")
-    return EBC_returns, full_weights, EBC_betas
+    return EBC_returns, weights_daily, EBC_betas

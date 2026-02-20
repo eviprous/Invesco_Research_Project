@@ -203,7 +203,15 @@ def compute_rolling_betas_and_alpha(
     return pd.DataFrame(results, index=index)
 
 
-def compute_rolling_metrics(returns, window):
+def compute_rolling_metrics(returns, window, frequency):
+    # Set annualization factor
+    if frequency == "daily":
+        ann_factor = 252
+    elif frequency == "monthly":
+        ann_factor = 12
+    else:
+        raise ValueError("freq_name must be 'Daily' or 'Monthly'")
+    
     returns = returns.dropna()
 
     # FIX: convert PeriodIndex → Timestamp for plotting
@@ -212,7 +220,7 @@ def compute_rolling_metrics(returns, window):
         returns.index = returns.index.to_timestamp()
 
     cum_return = np.log1p(returns).cumsum()
-    rolling_vol = returns.rolling(window).std() * np.sqrt(12)
+    rolling_vol = returns.rolling(window).std() * np.sqrt(ann_factor)
     rolling_sharpe = returns.rolling(window).mean() / returns.rolling(window).std()
 
     return cum_return, rolling_vol, rolling_sharpe
@@ -248,3 +256,37 @@ def plot_cumulative_returns(
     plt.tight_layout()
     plt.show()
 
+
+# ------------------------------------------------------
+# Define functions for rolling correlation
+# ------------------------------------------------------
+def compute_rolling_correlation(port1_returns, port2_returns, window):
+    """
+    Compute rolling correlation between selected portfolio and market.
+
+    Parameters
+    ----------
+    sel_returns : pd.Series
+        Selected portfolio returns (excess returns recommended)
+    mkt_returns : pd.Series
+        Market portfolio returns
+    window : int
+        Rolling window length
+
+    Returns
+    -------
+    rolling_corr : pd.Series
+        Rolling correlation series
+    """
+
+    # Align and drop missing values
+    aligned = pd.concat([port1_returns, port2_returns], axis=1).dropna()
+    aligned.columns = ["Port1", "Port2"]
+
+    rolling_corr = (
+        aligned["Port1"]
+        .rolling(window)
+        .corr(aligned["Port2"])
+    )
+
+    return rolling_corr

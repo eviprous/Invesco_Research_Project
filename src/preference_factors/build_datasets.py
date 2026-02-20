@@ -165,6 +165,9 @@ def build_all_dataset(
     # ------------------
     df_EBC_returns, df_EBC_weights, df_EBC_beta_contributions = build_EBC_dataset(returns_file, ff_factors_file, frequency)
 
+    if frequency == "monthly":
+        df_EBC_returns.index = df_EBC_returns.index.to_period("M")
+        
     # Ensure alignment
     ret_ebc = df_EBC_returns.iloc[:, 0]
     ret_cw, ret_ebc = ret_cw.align(ret_ebc, join="inner")

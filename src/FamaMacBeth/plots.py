@@ -70,6 +70,8 @@ def plot_mean_grid(mean_grid, annualize=True, frequency = 'monthly'):
     plt.tight_layout()
     plt.show()
 
+    return display_grid
+
 
 def plot_alpha_grid(alpha_grid):
     n_q1, n_q2 = alpha_grid.shape
@@ -118,7 +120,8 @@ def plot_expected_return_grid(beta_table, fm_table, n_q1, n_q2, frequency = 'mon
     else:
         raise ValueError("freq must be 'monthly' or 'daily'")
 
-    fm_implied_grid_annual = (1 + fm_implied_grid.astype(float)) ** ann_factor - 1
+    #fm_implied_grid_annual = (1 + fm_implied_grid.astype(float)) ** ann_factor - 1
+    fm_implied_grid_annual = fm_implied_grid.astype(float) * ann_factor
 
     #fm_implied_grid_annual = (1 + fm_implied_grid.astype(float)) ** 12 - 1
 
@@ -138,5 +141,6 @@ def plot_expected_return_grid(beta_table, fm_table, n_q1, n_q2, frequency = 'mon
     plt.tight_layout()
     plt.show()
 
+    return fm_implied_grid_annual
 
 

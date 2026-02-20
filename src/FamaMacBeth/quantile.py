@@ -33,9 +33,10 @@ def build_double_sorted_portfolios(
     min_assets_per_cell=3,
     f1_name="EBC",
     f2_name="Cap_EBC",
+    formation_frequency = 'quarterly',
 ):
     """Main portfolio construction routine."""
-    # Ensure consistent timestamp index (PeriodIndex can break downstream alignment)
+
     if isinstance(beta1_df.index, pd.PeriodIndex):
         beta1_df = beta1_df.copy()
         beta1_df.index = beta1_df.index.to_timestamp()
@@ -46,9 +47,30 @@ def build_double_sorted_portfolios(
         sp500 = sp500.copy()
         sp500.index = sp500.index.to_timestamp()
 
-    dates = (
-        beta1_df.index.intersection(beta2_df.index).intersection(sp500.index)
-    )
+    all_dates = (beta1_df.index.intersection(beta2_df.index).intersection(sp500.index))
+    print(all_dates)
+
+    if formation_frequency == "daily":
+        formation_dates = all_dates
+    elif formation_frequency == "monthly":
+        formation_dates = (
+            pd.Series(all_dates)
+            .groupby(pd.Series(all_dates).dt.to_period("M"))
+            .last())
+    elif formation_frequency == "quarterly":
+        formation_dates = (
+            pd.Series(all_dates)
+            .groupby(pd.Series(all_dates).dt.to_period("Q"))
+            .last()
+            .values)
+
+    else:
+        raise ValueError("formation_frequency must be 'monthly' or 'quarterly'")
+
+
+
+    dates = pd.DatetimeIndex(formation_dates).sort_values()
+
 
     port_rows, members_rows, cell_rows = [], [], []
 
@@ -103,26 +125,22 @@ def build_double_sorted_portfolios(
                     "q2": j,
                     "stocks": cell.index.tolist(),
                 })
-
     portrets = (
         pd.DataFrame(port_rows)
         .assign(date=lambda x: pd.to_datetime(x.date))
         .set_index(["date", "q1", "q2"])
         .sort_index()
     )
-
     members = (
         pd.concat(members_rows, ignore_index=True)
         .assign(date=lambda x: pd.to_datetime(x.date))
         .set_index(["date", "ticker"])
         .sort_index()
     )
-
     quantile_map = (
         pd.DataFrame(cell_rows)
         .assign(date=lambda x: pd.to_datetime(x.date))
         .set_index(["date", "q1", "q2"])
         .sort_index()
     )
-
     return portrets, members, quantile_map, f1_name, f2_name

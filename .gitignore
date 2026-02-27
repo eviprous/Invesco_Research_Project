@@ -27,6 +27,7 @@ Thumbs.db
 #data/processed/*
 #!data/processed/README.md
 data/processed/Ken
+data/raw
 
 # ===== Outputs =====
 outputs/

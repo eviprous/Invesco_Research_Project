@@ -26,6 +26,7 @@ Thumbs.db
 # ===== Data (do not commit data) =====
 #data/processed/*
 #!data/processed/README.md
+data/processed/Ken
 
 # ===== Outputs =====
 outputs/

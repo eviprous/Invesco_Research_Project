@@ -154,7 +154,7 @@ def compute_rolling_betas_and_alpha(
     beta_Momentum=False
 ):
     factor_flags = {
-        "Mkt_RF": beta_MKT,
+        "MKT_RF": beta_MKT,
         "SMB": beta_SMB,
         "HML": beta_HML,
         "RMW": beta_RMW,

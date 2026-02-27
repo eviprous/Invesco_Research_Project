@@ -46,6 +46,7 @@ def run_full_factor_pipeline(
        # portrets_wide.index = portrets_wide.index.to_period("M").to_timestamp()
 
     factors = pd.concat([EBC, Cap_EBC], axis=1).dropna()
+    
 
     if frequency == "monthly":
         if isinstance(factors.index, pd.PeriodIndex):
@@ -60,10 +61,11 @@ def run_full_factor_pipeline(
     portrets_wide = portrets_wide.loc[common_index]
     factors = factors.loc[common_index]
 
-    ts_summary = run_time_series_regressions(portrets_wide, factors, f1, f2)
+
+    ts_summary = run_time_series_regressions(portrets_wide, factors, f1, f2, frequency=frequency)
     beta_table = ts_summary[["betaEBC", "betaCap_EBC"]].dropna()
 
-    fm_table = run_fama_macbeth(portrets_wide[beta_table.index], beta_table, factors)
+    fm_table = run_fama_macbeth(portrets_wide[beta_table.index], beta_table, frequency=frequency)
     pricing_df = pricing_errors(portrets_wide, beta_table, ts_summary, fm_table)
     mean_grid, alpha_grid = build_grids(pricing_df, n_q1, n_q2)
 

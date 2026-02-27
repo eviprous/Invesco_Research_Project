@@ -67,6 +67,14 @@ def compute_rolling_betas(
         # B[0] = alpha, B[1] = beta for factor_name
         betas_df.loc[next_date, Y_win.columns] = B[1, :]
 
+    # clip the most extreme betas 0.5% of tails
+
+    stacked = betas_df.stack(dropna=True)
+    lower = stacked.quantile(0.005)
+    upper = stacked.quantile(0.995)
+    betas_df = betas_df.clip(lower, upper)
+
+
 
     return betas_df
 

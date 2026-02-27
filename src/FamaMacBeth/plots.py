@@ -51,7 +51,7 @@ def plot_mean_grid(mean_grid, annualize=True, frequency = 'monthly'):
         display_grid = mean_grid
         title = "Mean Portfolio Returns"
 
-    plt.figure(figsize=(6, 5))
+    plt.figure(figsize=(8, 6))
     im = plt.imshow(display_grid.values, cmap="YlGnBu")
     plt.title(title)
     plt.xlabel("Q2 (within Q1)")
@@ -106,7 +106,7 @@ def plot_expected_return_grid(beta_table, fm_table, n_q1, n_q2, frequency = 'mon
         betaCap_grid.loc[q1, q2] = beta_table.loc[p, "betaCap_EBC"]
 
     gamma0_bar = fm_table.loc["alpha", "lambda_mean"]
-    gamma1_bar = fm_table.loc["lambdaEBC", "lambda_mean"]
+    gamma1_bar = fm_table.loc["lambda_EBC", "lambda_mean"]
     gamma2_bar = fm_table.loc["lambda_Cap_EBC", "lambda_mean"]
 
     fm_implied_grid = (

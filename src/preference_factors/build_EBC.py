@@ -35,13 +35,14 @@ def _solve_ebc_for_row(row, betas_row):
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_RAW_DIR = PROJECT_ROOT / "data" / "raw"
 
-def compute_rolling_market_betas_and_alphas(asset_ret_df, factors_df, window, beta_mkt = True):
-    '''Compute the rolling betas and alphas for each stock in asset_ret_df against the factors in factors_df.'''
-    factors = {'MKT_RF': beta_mkt}
-    selected_factors = [factor for factor, include in factors.items() if include]
-    results = {"alpha": []}
-    for factor in selected_factors:
-        results[f"beta_{factor}"] = []
+def compute_rolling_market_betas_and_alphas(asset_ret_df, factors_df, window, beta_mkt=True):
+    """
+    Compute rolling CAPM betas using:
+    (R_i - RF) = alpha + beta * (MKT_RF)
+    """
+
+    factors = {"MKT_RF": beta_mkt}
+    selected_factors = [f for f, include in factors.items() if include]
 
     dates = asset_ret_df.index[window:]
     tickers = asset_ret_df.columns
@@ -49,7 +50,6 @@ def compute_rolling_market_betas_and_alphas(asset_ret_df, factors_df, window, be
     alphas_df = pd.DataFrame(index=dates, columns=tickers, dtype=float)
     betas_df = pd.DataFrame(index=dates, columns=tickers, dtype=float)
 
-    #for i in range(window, len(asset_ret_df)):
     for i in tqdm(
         range(window, len(asset_ret_df)),
         desc="Rolling OLS CAPM",
@@ -58,36 +58,46 @@ def compute_rolling_market_betas_and_alphas(asset_ret_df, factors_df, window, be
 
         date = asset_ret_df.index[i]
 
-        Y_win = asset_ret_df.iloc[i - window:i].astype(float)                 # T x N
-        X_win = factors_df[selected_factors].iloc[i - window:i].astype(float) # T x K
+        # Rolling window
+        Y_win = asset_ret_df.iloc[i - window:i].astype(float)                 # raw returns
+        X_win = factors_df[selected_factors].iloc[i - window:i].astype(float) # MKT_RF
+        rf_win = factors_df["RF"].iloc[i - window:i].astype(float)
 
-        # drop rows with any NaNs in factors
+        # Align indices
+        Y_win, X_win = Y_win.align(X_win, join="inner", axis=0)
+        rf_win = rf_win.loc[Y_win.index]
+
+        # ---- Proper CAPM: subtract RF ----
+        Y_win = Y_win.sub(rf_win, axis=0)
+
+        # Drop rows with NaNs in factors
         valid_rows = ~X_win.isna().any(axis=1)
         X_win = X_win.loc[valid_rows]
         Y_win = Y_win.loc[valid_rows]
 
-        if len(X_win) == 0:
+        if len(X_win) < window:
             continue
 
-        # drop tickers with any NaNs in this window
+        # Drop assets with NaNs
         valid_cols = ~Y_win.isna().any(axis=0)
         Y_win = Y_win.loc[:, valid_cols]
+
         if Y_win.shape[1] == 0:
             continue
 
-        X = sm.add_constant(X_win, has_constant="add").values   # T x (K+1)
-        Y = Y_win.values                                        # T x N
+        X = sm.add_constant(X_win, has_constant="add").values
+        Y = Y_win.values
 
         XtX = X.T @ X
+
+        # Condition check (important for early instability)
         if np.linalg.matrix_rank(XtX) < XtX.shape[0]:
             continue
 
-        B = np.linalg.solve(XtX, X.T @ Y)  # (K+1) x N
+        B = np.linalg.solve(XtX, X.T @ Y)
 
-        # store alphas and betas
         alphas_df.loc[date, Y_win.columns] = B[0, :]
-        betas_df.loc[date, Y_win.columns] = B[1, :]  # only MKT_RF
-
+        betas_df.loc[date, Y_win.columns] = B[1, :]
 
     return alphas_df, betas_df
 
@@ -280,7 +290,8 @@ def build_EBC_dataset_daily(daily_asset_returns, daily_factors, window= 252):
 
     # Rebalance Monthly
     weights_rebal = full_weights.resample("M").last()
-    weights_rebal = weights_rebal.shift(1)
+    #weights_rebal = weights_rebal.shift(1) --> we do NOT want to shift one month
+    weights_rebal = weights_rebal.shift(1, freq="D")
 
 
     # forward-fill to daily

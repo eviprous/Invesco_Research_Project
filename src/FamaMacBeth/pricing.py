@@ -1,9 +1,10 @@
 import numpy as np
 import pandas as pd
 
+
 def pricing_errors(portrets_wide, beta_table, ts_summary, fm_table):
     g0 = fm_table.loc["alpha", "lambda_mean"]
-    g1 = fm_table.loc["lambdaEBC", "lambda_mean"]
+    g1 = fm_table.loc["lambda_EBC", "lambda_mean"]
     g2 = fm_table.loc["lambda_Cap_EBC", "lambda_mean"]
 
     rows = []
@@ -22,7 +23,6 @@ def pricing_errors(portrets_wide, beta_table, ts_summary, fm_table):
 
     return pd.DataFrame(rows).set_index("portfolio")
 
-
 def build_grids(pricing_df, n_q1, n_q2):
     mean_grid = pd.DataFrame(np.nan, index=range(1, n_q1+1), columns=range(1, n_q2+1))
     alpha_grid = mean_grid.copy()
@@ -33,3 +33,6 @@ def build_grids(pricing_df, n_q1, n_q2):
         alpha_grid.loc[q1, q2] = r["alpha_fm"]
 
     return mean_grid, alpha_grid
+
+
+

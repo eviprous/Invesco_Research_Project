@@ -126,7 +126,7 @@ def build_all_dataset(
     returns_file: str,
     market_caps_file: str,
     ff_factors_file: str,
-    frequency: str = 'monthly',
+    frequency: str = 'monthly'
 ) -> pd.DataFrame:  
     """
     function that reads returns and market cap files and creates df with preferences CW-EW and CW-EBC
@@ -177,43 +177,44 @@ def build_all_dataset(
     # ------------------
     # Preference portfolio
     # ------------------
-    ret_cw_ew = ret_cw - ret_ew
-    ret_cw_ebc = ret_cw - ret_ebc
-
     merged_df = pd.DataFrame(
         {
             "CW": ret_cw,
             "EW": ret_ew,
-            "EBC": ret_ebc,
-            "CW-EW": ret_cw_ew,
-            "CW-EBC": ret_cw_ebc
+            "EBC": ret_ebc
         }
     ).dropna()
 
     ff_factors = build_ff_dataset(ff_factors_file,frequency)
-
-    # ------------------
-    # Merge with factors
-    # ------------------
     full_merged_df = merged_df.join(ff_factors, how="inner").dropna()
 
+    # We transform CW and EW into excess space to match EBC
+    full_merged_df["CW"] = full_merged_df["CW"] - full_merged_df["RF"]
+    full_merged_df["EW"] = full_merged_df["EW"] - full_merged_df["RF"]
+    full_merged_df["EBC"] = full_merged_df["EBC"] - full_merged_df["RF"]
+
+    # Since everything is now excess, the RF cancels out perfectly
+    full_merged_df["CW-EW"] = full_merged_df["CW"] - full_merged_df["EW"]
+    full_merged_df["CW-EBC"] = full_merged_df["CW"] - full_merged_df["EBC"]
+
+    # 6. Final cleanup for saving
+    merged_df = full_merged_df[["CW", "EW", "EBC", "CW-EW", "CW-EBC"]]
+
+    save_dir = DATA_PROCESSED_DIR / frequency
     if frequency == "monthly":
         # save individual datasets
-        df_EBC_weights.to_csv(DATA_PROCESSED_DIR / "monthly_EBC_weights.csv")
-        df_EBC_beta_contributions.to_csv(DATA_PROCESSED_DIR / "monthly_EBC_beta_contributions.csv")
-        df_EBC_returns.to_csv(DATA_PROCESSED_DIR / "monthly_EBC_returns.csv")
-
-        # save merged dataset
-        merged_df.to_csv(DATA_PROCESSED_DIR / "monthly_preference_returns.csv")
-        full_merged_df.to_csv(DATA_PROCESSED_DIR / "monthly_preference_returns_and_factors.csv")
+        df_EBC_weights.to_csv(save_dir / "monthly_EBC_weights.csv")
+        df_EBC_beta_contributions.to_csv(save_dir / "monthly_EBC_beta_contributions.csv")
+        df_EBC_returns.to_csv(save_dir / "monthly_EBC_excess_returns.csv")
+        merged_df.to_csv(save_dir / "monthly_preference_excess_returns.csv")
+        full_merged_df.to_csv(save_dir / "monthly_preference_excess_returns_and_factors.csv")
 
     elif frequency == "daily":
-        df_EBC_weights.to_csv(DATA_PROCESSED_DIR / "daily_EBC_weights.csv")
-        df_EBC_beta_contributions.to_csv(DATA_PROCESSED_DIR / "daily_EBC_beta_contributions.csv")
-        df_EBC_returns.to_csv(DATA_PROCESSED_DIR / "daily_EBC_returns.csv")
+        df_EBC_weights.to_csv(save_dir / "daily_EBC_weights.csv")
+        df_EBC_beta_contributions.to_csv(save_dir / "daily_EBC_beta_contributions.csv")
+        df_EBC_returns.to_csv(save_dir / "daily_EBC_excess_returns.csv")
+        merged_df.to_csv(save_dir / "daily_preference_excess_returns.csv")
+        full_merged_df.to_csv(save_dir / "daily_preference_excess_returns_and_factors.csv")
 
-        # save merged dataset
-        merged_df.to_csv(DATA_PROCESSED_DIR / "daily_preference_returns.csv")
-        full_merged_df.to_csv(DATA_PROCESSED_DIR / "daily_preference_returns_and_factors.csv")
 
     return merged_df, full_merged_df

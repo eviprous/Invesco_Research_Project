@@ -3,6 +3,109 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 
+def plot_cum_returns(df, title=None, log=False):
+    """
+    Plot cumulative returns.
+    log=False: (1+r).cumprod() growth factor
+    log=True:  log(1+r).cumsum() cumulative log return
+    """
+    if log:
+        cum = np.log1p(df).cumsum()
+        ylabel = "Cumulative Log Return"
+        if title is None:
+            title = "Cumulative Log Returns"
+    else:
+        cum = (1 + df).cumprod()
+        ylabel = "Growth Factor"
+        if title is None:
+            title = "Cumulative Returns"
+
+    plt.figure(figsize=(14, 8))
+    palette = plt.cm.tab20.colors
+    colors = (palette * ((len(cum.columns) // len(palette)) + 1))[:len(cum.columns)]
+
+    for col, color in zip(cum.columns, colors):
+        series = cum[col].dropna()
+        if series.empty:
+            continue
+        plt.plot(series.index, series.values, color=color, linewidth=2, label=col)
+
+    plt.title(title)
+    plt.xlabel("Date")
+    plt.ylabel(ylabel)
+    plt.legend(
+        ncol=2 if len(cum.columns) > 6 else 1,
+        fontsize=9,
+        bbox_to_anchor=(1.05, 1),
+        loc="upper left",
+    )
+    plt.grid(True, linestyle="--", alpha=0.4)
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_mean_grid_new(mean_grid, annualize=True, cw=True, geometric=False, portrets_wide=None, frequency="monthly"):
+    """
+    Plot annualized mean return grid as a heatmap.
+    geometric=True: compute true geometric mean from portrets_wide (uses column order).
+    Returns the display grid in percentage points.
+    """
+    n_q1, n_q2 = mean_grid.shape
+
+    if frequency == "monthly":
+        ann_factor = 12
+    elif frequency == "daily":
+        ann_factor = 252
+    else:
+        raise ValueError("frequency must be 'monthly' or 'daily'")
+
+    if geometric and portrets_wide is not None:
+        display_grid = pd.DataFrame(np.nan, index=range(1, n_q1 + 1), columns=range(1, n_q2 + 1), dtype=float)
+        cols = list(portrets_wide.columns)
+        idx = 0
+        for i in range(1, n_q1 + 1):
+            for j in range(1, n_q2 + 1):
+                if idx < len(cols):
+                    series = portrets_wide[cols[idx]].dropna()
+                    geo_monthly = np.expm1(np.log1p(series).mean())
+                    geo_ann = (1 + geo_monthly) ** ann_factor - 1 if annualize else geo_monthly
+                    display_grid.loc[i, j] = geo_ann * 100
+                    idx += 1
+    else:
+        if annualize:
+            display_grid = mean_grid.astype(float) * ann_factor * 100
+        else:
+            display_grid = mean_grid.astype(float) * 100
+
+    weight_type = "Cap Weighted" if cw else "Equal Weighted"
+    return_type = "Geometric" if geometric else "Arithmetic"
+    if annualize:
+        title = f"Annualized {return_type} Mean Returns (%) — {weight_type}"
+    else:
+        title = f"{return_type} Mean Returns — {weight_type}"
+
+    plt.figure(figsize=(8, 6))
+    vals = display_grid.values.astype(float)
+    im = plt.imshow(vals, cmap="YlGnBu")
+    plt.title(title)
+    plt.xlabel("Q2 (within Q1)")
+    plt.ylabel("Q1")
+    plt.xticks(range(n_q2), range(1, n_q2 + 1))
+    plt.yticks(range(n_q1), range(1, n_q1 + 1))
+
+    for i in range(n_q1):
+        for j in range(n_q2):
+            val = vals[i, j]
+            if np.isfinite(val):
+                plt.text(j, i, f"{val:.2f}%", ha="center", va="center", color="white", fontsize=9)
+
+    plt.colorbar(im, fraction=0.046, pad=0.04)
+    plt.tight_layout()
+    plt.show()
+
+    return display_grid
+
+
 def plot_cum_log_returns(portfolio_returns, title=None):
     log_returns = np.log1p(portfolio_returns)
     cum_log_returns = log_returns.cumsum()

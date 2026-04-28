@@ -11,8 +11,9 @@ from pathlib import Path
 #   2. exchcd IN (1, 2, 3)   — NYSE, AMEX, NASDAQ only
 #                              excludes OTC pink sheets and foreign exchanges
 #   3. abs(prc) > 1          — price above $1 (penny stock filter)
-#   4. me > 5000             — market cap > $5M in thousands (shell/micro filter)
-#   5. shrout > 0            — must have reported shares outstanding
+#
+# Universe: all ordinary US common shares listed on major exchanges with price > $1,
+# covering ~5,000-8,000 stocks at any point in time vs. the fixed 500 of the S&P 500.
 # -------------------------------------------------
 
 
@@ -20,16 +21,14 @@ from pathlib import Path
 # Core WRDS pulls
 # -------------------------------------------------
 
-def load_crsp_full(conn, start, end, frequency: str) -> pd.DataFrame:
+def load_crsp_full(conn, start, end) -> pd.DataFrame:
     """
     Pull returns, price, shares outstanding, share code, and exchange code
-    from CRSP for the full universe (no index membership filter).
+    from CRSP monthly file for the full universe (no index membership filter).
     """
-    table = "crsp.msf" if frequency == "monthly" else "crsp.dsf"
-
     return conn.raw_sql(f"""
         SELECT permno, date, ret, prc, shrout, shrcd, exchcd
-        FROM {table}
+        FROM crsp.msf
         WHERE date BETWEEN '{start}' AND '{end}'
     """)
 
@@ -44,18 +43,11 @@ def apply_universe_filters(df: pd.DataFrame) -> pd.DataFrame:
       - Ordinary common shares (shrcd 10/11)
       - Major US exchanges only (exchcd 1/2/3)
       - Price > $1
-      - Market cap > $5M
-      - Positive shares outstanding
     """
-    df = df.copy()
-    df["me"] = df["prc"].abs() * df["shrout"]
-
     mask = (
         df["shrcd"].isin([10, 11]) &
         df["exchcd"].isin([1, 2, 3]) &
-        (df["prc"].abs() > 1) &
-        (df["me"] > 5_000) &       # $5M in thousands (CRSP convention)
-        (df["shrout"] > 0)
+        (df["prc"].abs() > 1)
     )
 
     return df[mask].copy()
@@ -103,11 +95,10 @@ def make_pivot(df: pd.DataFrame, value_col: str) -> pd.DataFrame:
 def load_complete_data(
     start: str = "1960-01-01",
     end: str = "2025-12-31",
-    frequency: str = "monthly"
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     Load the full CRSP US equity universe (ticker-based), survivorship-free,
-    with standard academic filters applied.
+    monthly frequency, with standard academic filters applied.
 
     Returns
     -------
@@ -117,12 +108,9 @@ def load_complete_data(
         Pivot table of market caps in $thousands (date x ticker)
     """
 
-    if frequency not in {"monthly", "daily"}:
-        raise ValueError("frequency must be 'monthly' or 'daily'")
-
     conn = wrds.Connection()
 
-    raw = load_crsp_full(conn, start, end, frequency)
+    raw = load_crsp_full(conn, start, end)
     filtered = apply_universe_filters(raw)
 
     returns_df = filtered[["permno", "date", "ret"]].copy()
@@ -139,9 +127,8 @@ def load_complete_data(
     returns_panel = returns_panel.loc[common_dates].sort_index()
     market_caps_panel = market_caps_panel.loc[common_dates].sort_index()
 
-    if frequency == "monthly":
-        returns_panel.index = pd.to_datetime(returns_panel.index).to_period("M")
-        market_caps_panel.index = pd.to_datetime(market_caps_panel.index).to_period("M")
+    returns_panel.index = pd.to_datetime(returns_panel.index).to_period("M")
+    market_caps_panel.index = pd.to_datetime(market_caps_panel.index).to_period("M")
 
     return returns_panel, market_caps_panel
 
@@ -157,16 +144,14 @@ DATA_RAW_DIR = PROJECT_ROOT / "data" / "raw"
 def build_complete_crsp_dataset(
     start: str = "1960-01-01",
     end: str = "2025-12-31",
-    frequency: str = "monthly"
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Build and save full CRSP universe datasets.
+    Build and save full CRSP universe datasets (monthly).
 
     Parameters
     ----------
     start : str
     end : str
-    frequency : {"daily", "monthly"}
 
     Returns
     -------
@@ -175,17 +160,13 @@ def build_complete_crsp_dataset(
 
     DATA_RAW_DIR.mkdir(parents=True, exist_ok=True)
 
-    returns, market_caps = load_complete_data(
-        start=start,
-        end=end,
-        frequency=frequency
-    )
+    returns, market_caps = load_complete_data(start=start, end=end)
 
     print(f"[CRSP Full Universe] Returns last date:     {returns.index.max()}")
     print(f"[CRSP Full Universe] Market caps last date: {market_caps.index.max()}")
     print(f"[CRSP Full Universe] Number of stocks:      {returns.shape[1]}")
 
-    returns.to_csv(DATA_RAW_DIR / f"complete_returns_{frequency}_with_tickers.csv")
-    market_caps.to_csv(DATA_RAW_DIR / f"complete_market_caps_{frequency}.csv")
+    returns.to_csv(DATA_RAW_DIR / "complete_returns_monthly_with_tickers.csv")
+    market_caps.to_csv(DATA_RAW_DIR / "complete_market_caps_monthly.csv")
 
     return returns, market_caps

@@ -5,7 +5,7 @@ from tqdm.auto import tqdm
 
 
 
-def load_monthly_inputs(data_raw_dir):
+def load_monthly_inputs(data_raw_dir, excess=True):
     data_raw_dir = Path(data_raw_dir)
     sp_500 = pd.read_csv(
         data_raw_dir / "sp500_returns_monthly_with_tickers.csv",
@@ -29,16 +29,16 @@ def load_monthly_inputs(data_raw_dir):
     rf.index = rf.index.to_period("M").to_timestamp()
     rf = rf[["RF"]]
 
-    # Subtract RF from every ticker column
     sp_500, rf = sp_500.align(rf, join="inner", axis=0)
-    sp_500 = sp_500.sub(rf["RF"], axis=0)
 
-    # Ensure market caps match the filtered dates of the returns
+    if excess:
+        sp_500 = sp_500.sub(rf["RF"], axis=0)
+
     sp_caps = sp_caps.loc[sp_500.index]
 
     return sp_500, sp_caps, rf
 
-def load_daily_inputs(data_raw_dir):
+def load_daily_inputs(data_raw_dir, excess=True):
     data_raw_dir = Path(data_raw_dir)
     sp_500 = pd.read_csv(
         data_raw_dir / "sp500_returns_daily_with_tickers.csv",
@@ -59,11 +59,11 @@ def load_daily_inputs(data_raw_dir):
     )
     rf = rf[["RF"]]
 
-    # Subtract RF from every ticker column
     sp_500, rf = sp_500.align(rf, join="inner", axis=0)
-    sp_500 = sp_500.sub(rf["RF"], axis=0)
 
-    # Ensure market caps match the filtered dates of the returns
+    if excess:
+        sp_500 = sp_500.sub(rf["RF"], axis=0)
+
     sp_caps = sp_caps.loc[sp_500.index]
 
     return sp_500, sp_caps, rf

@@ -34,7 +34,8 @@ def build_double_sorted_portfolios(
     min_assets_per_cell=3,
     f1_name="EBC",
     f2_name="Cap_EBC",
-    formation_frequency = 'quarterly',
+    formation_frequency='quarterly',
+    caps_df=None,
 ):
     """
     Main portfolio construction routine.
@@ -52,6 +53,8 @@ def build_double_sorted_portfolios(
         beta2_df = beta2_df.copy(); beta2_df.index = beta2_df.index.to_timestamp()
     if isinstance(sp500.index, pd.PeriodIndex):
         sp500 = sp500.copy(); sp500.index = sp500.index.to_timestamp()
+    if caps_df is not None and isinstance(caps_df.index, pd.PeriodIndex):
+        caps_df = caps_df.copy(); caps_df.index = caps_df.index.to_timestamp()
 
     all_dates = (beta1_df.index.intersection(beta2_df.index).intersection(sp500.index))
 
@@ -115,14 +118,26 @@ def build_double_sorted_portfolios(
                     # Tickers assigned at 'date' are used for 'hold_date'
                     tickers = df_chars[(df_chars.q1 == i_q) & (df_chars.q2 == j_q)].index
                     cell_rets = current_rets.reindex(tickers).dropna()
-                    
+
                     n_assets = len(cell_rets)
-                    ret = cell_rets.mean() if n_assets >= min_assets_per_cell else np.nan
+                    ret_ew = cell_rets.mean() if n_assets >= min_assets_per_cell else np.nan
+
+                    # Cap-weighted return
+                    if caps_df is not None and hold_date in caps_df.index:
+                        cell_caps = caps_df.loc[hold_date].reindex(cell_rets.index).dropna()
+                        common = cell_rets.index.intersection(cell_caps.index)
+                        if len(common) >= min_assets_per_cell and cell_caps.reindex(common).sum() > 0:
+                            w = cell_caps.reindex(common) / cell_caps.reindex(common).sum()
+                            ret_cw = (cell_rets.reindex(common) * w).sum()
+                        else:
+                            ret_cw = np.nan
+                    else:
+                        ret_cw = ret_ew
 
                     port_rows.append({
-                        "date": hold_date, 
+                        "date": hold_date,
                         "q1": i_q, "q2": j_q,
-                        "ret_ew": ret, "n_assets": n_assets,
+                        "ret_ew": ret_ew, "ret_cw": ret_cw, "n_assets": n_assets,
                     })
                     
                     # Record specific stock membership for this cell/month

@@ -41,3 +41,10 @@ tables/
 *.pem
 *.key
 *.env
+
+
+data/
+*.csv
+*.parquet
+*.pkl
+*.feather

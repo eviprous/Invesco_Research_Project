@@ -117,12 +117,192 @@ def build_EBC_dataset(
         return ebc.build_EBC_dataset_monthly(returns,ff_factors)
     else:
         return ebc.build_EBC_dataset_daily(returns, ff_factors)
+    
+##################################################################
+################ Functions for EW & CW dataset ###################
+##################################################################
+
+def build_cw_ew_dataset(
+    returns_file: str,
+    market_caps_file: str,
+    ff_factors_file: str,
+    frequency: str = "monthly"
+):
+    """
+    Build CW and EW portfolios only (no EBC), and merge with FF factors.
+    """
+
+    if frequency not in {"daily", "monthly"}:
+        raise ValueError("frequency must be 'daily' or 'monthly'")
+
+    # ------------------
+    # Load data
+    # ------------------
+    returns = build_returns_dataset(returns_file, frequency)
+    market_caps = build_market_cap_dataset(market_caps_file, frequency)
+
+    # Align columns (assets)
+    common_assets = returns.columns.intersection(market_caps.columns)
+    returns = returns[common_assets]
+    market_caps = market_caps[common_assets]
+
+    # Ensure numeric
+    returns = returns.apply(pd.to_numeric, errors="coerce")
+    market_caps = market_caps.apply(pd.to_numeric, errors="coerce")
+
+    # ------------------
+    # CW (CORRECT VERSION WITH LAG)
+    # ------------------
+    lagged_caps = market_caps.shift(1)
+
+    # Remove assets without returns
+    lagged_caps = lagged_caps.where(returns.notna())
+
+    # Normalize weights each period
+    cap_weights = lagged_caps.div(lagged_caps.sum(axis=1), axis=0)
+
+    ret_cw = (cap_weights * returns).sum(axis=1)
+
+    # ------------------
+    # EW (clean version)
+    # ------------------
+    active = returns.notna()
+    n_active = active.sum(axis=1)
+
+    ew_weights = active.div(n_active, axis=0)
+
+    ret_ew = (ew_weights * returns).sum(axis=1)
+
+    # ------------------
+    # Merge with FF
+    # ------------------
+    merged = pd.DataFrame({
+        "CW": ret_cw,
+        "EW": ret_ew
+    }).dropna()
+
+    return merged
 
 #####################################################################
 ################ Functions for preference dataset ###################
 #####################################################################
 
 def build_all_dataset(
+    returns_file: str,
+    market_caps_file: str,
+    ff_factors_file: str,
+    frequency: str = "monthly"
+):
+    """
+    Build CW, EW, and EBC portfolios and compute preference spreads.
+    Returns both excess-only dataset and dataset including FF factors.
+    """
+
+    if frequency not in {"daily", "monthly"}:
+        raise ValueError("frequency must be 'daily' or 'monthly'")
+
+    # -------------------------------------------------
+    # 1. Build CW & EW (RAW returns, already lagged properly)
+    # -------------------------------------------------
+    cw_ew_df = build_cw_ew_dataset(
+        returns_file,
+        market_caps_file,
+        ff_factors_file,
+        frequency
+    )
+
+    # -------------------------------------------------
+    # 2. Build EBC (RAW returns)
+    # -------------------------------------------------
+    df_EBC_returns, df_EBC_weights, df_EBC_beta_contributions = build_EBC_dataset(
+        returns_file,
+        ff_factors_file,
+        frequency
+    )
+
+    ret_ebc = df_EBC_returns.iloc[:, 0]
+
+    # Ensure monthly PeriodIndex consistency
+    if frequency == "monthly":
+        if not isinstance(ret_ebc.index, pd.PeriodIndex):
+            ret_ebc.index = ret_ebc.index.to_period("M")
+
+
+    # -------------------------------------------------
+    # 3. Align all portfolios (SAFE ALIGNMENT)
+    # -------------------------------------------------
+
+    # Ensure consistent index types
+    if frequency == "monthly":
+        if isinstance(cw_ew_df.index, pd.PeriodIndex) and not isinstance(ret_ebc.index, pd.PeriodIndex):
+            ret_ebc = ret_ebc.copy()
+            ret_ebc.index = ret_ebc.index.to_period("M")
+
+        if isinstance(ret_ebc.index, pd.PeriodIndex) and not isinstance(cw_ew_df.index, pd.PeriodIndex):
+            cw_ew_df = cw_ew_df.copy()
+            cw_ew_df.index = cw_ew_df.index.to_period("M")
+
+    # Explicit alignment
+    cw_ew_df, ret_ebc = cw_ew_df.align(ret_ebc, join="inner", axis=0)
+
+    merged = cw_ew_df.copy()
+    merged["EBC"] = ret_ebc
+
+    # -------------------------------------------------
+    # 4. Merge with FF factors
+    # -------------------------------------------------
+    ff_factors = build_ff_dataset(ff_factors_file, frequency)
+
+    full_df = merged.join(ff_factors, how="inner").dropna()
+
+    # -------------------------------------------------
+    # 5. Convert to excess returns (consistent space)
+    # -------------------------------------------------
+    full_df["CW_RF"]  = full_df["CW"]  - full_df["RF"]
+    full_df["EW_RF"]  = full_df["EW"]  - full_df["RF"]
+    full_df["EBC_RF"] = full_df["EBC"] - full_df["RF"]
+
+    # Preference spreads in excess space
+    full_df["CW-EW"]  = full_df["CW_RF"]  - full_df["EW_RF"]
+    full_df["CW-EBC"] = full_df["CW_RF"]  - full_df["EBC_RF"]
+
+    # -------------------------------------------------
+    # 6. Final cleaned dataset (excess-only)
+    # -------------------------------------------------
+    excess_df = full_df[
+        ["CW_RF", "EW_RF", "EBC_RF", "CW-EW", "CW-EBC"]
+    ]
+
+    # -------------------------------------------------
+    # 7. Save
+    # -------------------------------------------------
+    save_dir = DATA_PROCESSED_DIR / frequency
+    save_dir.mkdir(parents=True, exist_ok=True)
+
+    if frequency == "monthly":
+        df_EBC_weights.to_csv(save_dir / "monthly_EBC_weights.csv")
+        df_EBC_beta_contributions.to_csv(save_dir / "monthly_EBC_beta_contributions.csv")
+        df_EBC_returns.to_csv(save_dir / "monthly_EBC_raw_returns.csv")
+
+        excess_df.to_csv(save_dir / "monthly_preference_excess_returns.csv")
+        full_df.to_csv(save_dir / "monthly_preference_full_dataset.csv")
+
+    else:
+        df_EBC_weights.to_csv(save_dir / "daily_EBC_weights.csv")
+        df_EBC_beta_contributions.to_csv(save_dir / "daily_EBC_beta_contributions.csv")
+        df_EBC_returns.to_csv(save_dir / "daily_EBC_raw_returns.csv")
+
+        excess_df.to_csv(save_dir / "daily_preference_excess_returns.csv")
+        full_df.to_csv(save_dir / "daily_preference_full_dataset.csv")
+
+    return excess_df, full_df
+
+
+
+
+
+
+def build_all_dataset_old(
     returns_file: str,
     market_caps_file: str,
     ff_factors_file: str,
@@ -218,3 +398,5 @@ def build_all_dataset(
 
 
     return merged_df, full_merged_df
+
+

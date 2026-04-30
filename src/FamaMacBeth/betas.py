@@ -16,8 +16,10 @@ def compute_rolling_betas(
     # if factor_returns.shape[1] != 1:
     #     raise ValueError("factor_returns must contain exactly ONE column")
 
-    # Align once
-    combined = asset_returns.join(factor_returns, how="inner")
+    # Align indices — use intersection to avoid column name conflicts
+    # (factor name may match a ticker, e.g. "EW" is an S&P 500 ticker)
+    common_idx = asset_returns.index.intersection(factor_returns.index).sort_values()
+    combined = pd.DataFrame(index=common_idx)
     tickers = asset_returns.columns
     factor_name = factor_returns.columns[0]
 

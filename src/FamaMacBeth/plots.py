@@ -61,16 +61,15 @@ def plot_mean_grid_new(mean_grid, annualize=True, cw=True, geometric=False, port
 
     if geometric and portrets_wide is not None:
         display_grid = pd.DataFrame(np.nan, index=range(1, n_q1 + 1), columns=range(1, n_q2 + 1), dtype=float)
-        cols = list(portrets_wide.columns)
-        idx = 0
-        for i in range(1, n_q1 + 1):
-            for j in range(1, n_q2 + 1):
-                if idx < len(cols):
-                    series = portrets_wide[cols[idx]].dropna()
-                    geo_monthly = np.expm1(np.log1p(series).mean())
-                    geo_ann = (1 + geo_monthly) ** ann_factor - 1 if annualize else geo_monthly
-                    display_grid.loc[i, j] = geo_ann * 100
-                    idx += 1
+        for col in portrets_wide.columns:
+            try:
+                q1, q2 = map(int, col.replace("Q", "").split("_"))
+            except Exception:
+                continue
+            series = portrets_wide[col].dropna()
+            geo_monthly = np.expm1(np.log1p(series).mean())
+            geo_ann = (1 + geo_monthly) ** ann_factor - 1 if annualize else geo_monthly
+            display_grid.loc[q1, q2] = geo_ann * 100
     else:
         if annualize:
             display_grid = mean_grid.astype(float) * ann_factor * 100
